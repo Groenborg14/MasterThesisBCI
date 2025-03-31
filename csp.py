@@ -27,7 +27,7 @@ class CSP:
 
             cov = np.cov(x_class, rowvar=True, bias=True)
             covs.append(cov)
-
+        
         # Solve the generalized eigenvalue problem
         eig_vals, eig_vecs = scipy.linalg.eigh(covs[0], covs[1])
         

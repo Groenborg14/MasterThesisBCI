@@ -1,59 +1,74 @@
 import mne
+from filter import filter_class
+import os
+import matplotlib.pyplot as plt
+from csp import CSP
+import numpy as np
 
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
 
 
 
 
 
 def GetRawData(subjects, run):
-    
-    fpath_subject = []
-    fpath_run     = []
-    fpath         = []
-    k             = 0
+    import os
 
-    for i in subjects:
-        print(i)
-        fpath_subject_temp = "/home/groenborg/mne_data/MNE-upperlimb-data/record/834976/files/motorimagination_subject"+str(i)
-        fpath_subject.append(fpath_subject_temp)
-        print(fpath_subject,len(fpath_subject))
+    fpath = []
 
-    for i in run:
-        fpath_run_temp = "_run"+str(i)+".gdf"
-        fpath_run.append(fpath_run_temp)
-        print(fpath_run,len(fpath_run))
+    for subj in subjects:
+        subj_path = "c:/Users/Christian/Desktop/Master Thesis/MI_data/motorimagination_subject" + str(subj)
+        for r in run:
+            full_path = os.path.join(subj_path + f"_run{r}.gdf")
+            fpath.append(full_path)
+            print(f"Added path: {full_path}")
 
-    for i in fpath_subject:
-        print("im in a for loop")
-        for k in fpath_run:
-            print("im in while loop")
-            fpath_temp = i+k
-            fpath.append(fpath_temp)
-            print(fpath)
-    
+    # Debug print to verify file existence
+    for path in fpath:
+        if not os.path.exists(path):
+            print(f"⚠️ File does NOT exist: {path}")
 
-    raw = mne.concatenate_raws([mne.io.read_raw_gdf(f, 
-                        eog=['eog-l', 'eog-m', 'eog-r'],
-                        preload=True, 
-                        include= ("C5","C3","C1","Cz","C2", "C4", "C6" ,"P3","P1","Pz","P2","P4")
-                        #exclude=('thumb_near', 'thumb_far', 'thumb_index', 'index_near', 'index_far', 'index_middle', 'middle_near', 'middle_far', 'middle_ring', 'ring_near', 'ring_far', 'ring_little', 'litte_near', 'litte_far', 'thumb_palm', 'wrist_bend', 'roll', 'pitch', 'gesture', 'handPosX', 'handPosY', 'handPosZ', 'elbowPosX', 'elbowPosY', 'elbowPosZ', 'ShoulderAdductio', 'ShoulderFlexionE', 'ShoulderRotation', 'Elbow', 'ProSupination', 'Wrist', 'GripPressure','armeodummy')
-                        ) for f in fpath])
-    
+    # Load files
+    raw = mne.concatenate_raws([
+        mne.io.read_raw_gdf(
+            f,
+            eog=['eog-l', 'eog-m', 'eog-r'],
+            preload=True,
+            include=(
+                "C5", "C3", "C1", "Cz", "C2", "C4", "C6",
+                "P3", "P1", "Pz", "P2", "P4", "F1", "Fz", "F2"
+            )
+        )
+        for f in fpath
+    ])
+
     return raw
 
+subjects = [13,14]
+run = [1,2,3,4,5,6,7,8,9,10]
 
-subjects = [1]
-run = [1,2,3,4,5]
-
+# Aquiring the data
 raw = GetRawData(subjects,run)
+
+# Correcting the data to uV and setting the reference to average 
 raw.apply_function(lambda x: x * 1e-6)
 raw.set_eeg_reference(ref_channels = 'average')
 
+# Replace NaN or inf values in the raw data
+raw_data = raw._data  # Access the raw EEG data as a NumPy array
+raw_data[np.isnan(raw_data)] = 0  # Replace NaN values with 0
+raw_data[np.isinf(raw_data)] = 0  # Replace inf values with 0
+
+# Getting the events from the annotations of the raw EEG data
 events,event_id = mne.events_from_annotations(raw)
 
+# Define the event dictionary
+# The keys are the event names and the values are the corresponding event IDs
 event_dict = {
-    "Elbow flex"  :   1,
-    #"Elbow extend":   2
+    "Elbow_flex"  :   1,
+    #"Elbow extend":   2,
     #"Supination"  :   3,
     #"Pronatinon"  :   4,
     #"Hand close"  :   5,
@@ -61,11 +76,34 @@ event_dict = {
     "Rest"        :   7
 }
 
+#raw.plot(events=events, start=0, duration=30)
+
+#eeg_data = raw._data()
+print(raw.ch_names)
+#print(raw.info)
+print(raw._data.shape)
+#fc = filter_class()
+
+# Filter data in alpha and beta band
+filtered_data_alpha = filter_class(lowcut=8,highcut=12).filter_data(raw._data)
+filtered_data_beta = filter_class(lowcut=12,highcut=30).filter_data(raw._data)
+print(filtered_data_alpha.shape)
+
+# Turn filtered data back into a mne raw object instead of numpy array
+filtered_raw_alpha = mne.io.RawArray(filtered_data_alpha, raw.info)
+filtered_raw_beta = mne.io.RawArray(filtered_data_beta, raw.info)
+
+#filtered_raw_alpha.plot(events=events, start=0, duration=30)
+#filtered_raw_beta.plot(events=events, start=0, duration=30)
+
+
+
 tmin = 1
 tmax = 3
 
-epochs = mne.Epochs(
-    raw,
+# Create epochs from the filtered data
+epochs_alpha = mne.Epochs(
+    filtered_raw_alpha,
     events,
     event_id=event_dict,
     tmin=tmin,
@@ -74,3 +112,56 @@ epochs = mne.Epochs(
     baseline=None,
     preload=True,
 )
+epochs_beta = mne.Epochs(
+    filtered_raw_beta,
+    events,
+    event_id=event_dict,
+    tmin=tmin,
+    tmax=tmax,
+    proj=True,
+    baseline=None,
+    preload=True,
+)
+#epochs["Rest"].plot(event_id=event_dict,events=events)
+
+# Using CSP to filter the data in the two bands
+csp_filter_alpha = CSP().fit_transform(epochs_alpha.get_data(), epochs_alpha.events[:, 2])
+csp_filter_beta = CSP().fit_transform(epochs_beta.get_data(), epochs_beta.events[:, 2])
+
+print(csp_filter_alpha.shape)
+
+# Concatenate the CSP-filtered data from alpha and beta bands
+csp_filter_combined = np.concatenate((csp_filter_alpha, csp_filter_beta), axis=1)  # Concatenate along columns
+print(csp_filter_combined.shape)
+# Prepare the data
+X = csp_filter_combined  # Features (CSP-transformed data)
+y = epochs_alpha.events[:, 2]  # Labels (class labels from events)
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Initialize the LDA classifier
+lda = LinearDiscriminantAnalysis()
+
+# Train the LDA classifier
+lda.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = lda.predict(X_test)
+
+# Evaluate the classifier
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Accuracy: {accuracy:.2f}")
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
+# Optional: Plot the decision boundary or results
+plt.figure(figsize=(10, 6))
+plt.scatter(range(len(y_test)), y_test, label="True Labels", alpha=0.7)
+plt.scatter(range(len(y_pred)), y_pred, label="Predicted Labels", alpha=0.7)
+plt.title("LDA Classification Results")
+plt.xlabel("Sample Index")
+plt.ylabel("Class Label")
+plt.legend()
+plt.grid(True)
+plt.show()
