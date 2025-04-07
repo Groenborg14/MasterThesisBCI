@@ -52,6 +52,7 @@ class CSP:
 
     def transform(self, x):
         pick_filters = self.filters[: self.n_components]
+        print(pick_filters.shape)
         x_transformed = np.asarray([np.dot(pick_filters, epoch) for epoch in x])
         x_transformed = (x_transformed**2).mean(axis=2)
 

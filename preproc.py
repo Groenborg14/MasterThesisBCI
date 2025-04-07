@@ -46,7 +46,7 @@ def GetRawData(subjects, run):
 
     return raw
 
-subjects = [13,14]
+subjects = [13]
 run = [1,2,3,4,5,6,7,8,9,10]
 
 # Aquiring the data
@@ -122,32 +122,54 @@ epochs_beta = mne.Epochs(
     baseline=None,
     preload=True,
 )
-#epochs["Rest"].plot(event_id=event_dict,events=events)
+#epochs_beta["Elbow_flex"].plot(event_id=event_dict,events=events)
 
+#print(epochs_alpha.get_data().shape)
 # Using CSP to filter the data in the two bands
-csp_filter_alpha = CSP().fit_transform(epochs_alpha.get_data(), epochs_alpha.events[:, 2])
-csp_filter_beta = CSP().fit_transform(epochs_beta.get_data(), epochs_beta.events[:, 2])
 
-print(csp_filter_alpha.shape)
+
+#print(csp_filter_alpha.shape)
 
 # Concatenate the CSP-filtered data from alpha and beta bands
-csp_filter_combined = np.concatenate((csp_filter_alpha, csp_filter_beta), axis=1)  # Concatenate along columns
-print(csp_filter_combined.shape)
+
+#print(csp_filter_combined.shape)
+
+
 # Prepare the data
-X = csp_filter_combined  # Features (CSP-transformed data)
+
+
+
 y = epochs_alpha.events[:, 2]  # Labels (class labels from events)
+X = np.arange(y.shape[0])  # Features (CSP-transformed data)
+
 
 # Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
 
 # Initialize the LDA classifier
 lda = LinearDiscriminantAnalysis()
 
+alpha_epochs = epochs_alpha.get_data()
+beta_epochs = epochs_beta.get_data()
+
+csp_alpha = CSP()
+csp_beta = CSP()
+csp_filter_alpha = csp_alpha.fit_transform(alpha_epochs[X_train], y_train.copy())
+csp_filter_beta = csp_beta.fit_transform(beta_epochs[X_train], y_train.copy())
+
+csp_filter_combined = np.concatenate((csp_filter_alpha, csp_filter_beta), axis=1)  # Concatenate along columns
+
 # Train the LDA classifier
-lda.fit(X_train, y_train)
+lda.fit(csp_filter_combined, y_train)
 
 # Make predictions on the test set
-y_pred = lda.predict(X_test)
+
+csp_filter_alpha_test = csp_alpha.transform(alpha_epochs[X_test])
+csp_filter_beta_test = csp_beta.transform(beta_epochs[X_test])
+
+csp_filter_combined_test = np.concatenate((csp_filter_alpha_test, csp_filter_beta_test), axis=1)  # Concatenate along columns
+
+y_pred = lda.predict(csp_filter_combined_test)
 
 # Evaluate the classifier
 accuracy = accuracy_score(y_test, y_pred)
@@ -155,7 +177,7 @@ print(f"Accuracy: {accuracy:.2f}")
 print("Classification Report:")
 print(classification_report(y_test, y_pred))
 
-# Optional: Plot the decision boundary or results
+# Plot the results
 plt.figure(figsize=(10, 6))
 plt.scatter(range(len(y_test)), y_test, label="True Labels", alpha=0.7)
 plt.scatter(range(len(y_pred)), y_pred, label="Predicted Labels", alpha=0.7)
