@@ -26,6 +26,7 @@ class CSP:
             x_class = np.transpose(x_class, [1, 0, 2]).reshape(n_channels, -1)
 
             cov = np.cov(x_class, rowvar=True, bias=True)
+            cov += np.eye(cov.shape[0]) * 1e-6
             covs.append(cov)
         
         # Solve the generalized eigenvalue problem

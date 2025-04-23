@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from torch import multiprocessing
+from csp_nn import CSPTuner
 
 
 
@@ -13,7 +14,6 @@ device = (
     if torch.cuda.is_available() and not is_fork
     else torch.device("cpu")
 )
-
 
 class PPOAgent(nn.Module):
     def __init__(self, input_dim, n_actions):

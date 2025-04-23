@@ -12,21 +12,29 @@ class CSPTuner(nn.Module):
 
 
         n_filters, n_channels = pretrained_w.shape
+        input_size = pretrained_w.shape[0] * time_window
 
-
-        self.csp = nn.Linear(n_channels, n_filters, bias=False)
+        self.csp = nn.Linear(2*n_channels, n_filters, bias=False)
         self.csp.weight.data = torch.tensor(pretrained_w, dtype=torch.float32)
 
 
-        self.policy = nn.Sequential(
-            nn.Flatten(),                  # 7 filters × 8 time → 56
-            nn.Linear(56, 64),
-            nn.ReLU(),
-            nn.Linear(64, n_actions)
+        self.shared = nn.Sequential(
+        nn.Flatten(),                  # 7 filters × 8 time → 56
+        nn.Linear(input_size, 128),
+        nn.ReLU()
         )
+        
+        self.policy_head = nn.Linear(128, n_actions)
+        self.value_head = nn.Linear(128, 1)
 
     def forward(self, x):
-        
-        x_proj = self.csp(x.transpose(1, 2)) # shape: (batch_size, n_filters, time_window) 
+        x_proj = self.csp(x.transpose(1, 2))  # (B, filters, time)
+        x = self.shared(x_proj)
+        return self.policy_head(x), self.value_head(x)
 
-        return self.policy(x_proj) # shape: (batch_size, n_actions)
+    def get_action(self, state):
+        logits, _ = self.forward(state)
+        dist = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()
+        return action.item(), dist.log_prob(action), dist.entropy()
+    
