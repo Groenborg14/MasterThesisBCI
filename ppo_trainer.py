@@ -15,7 +15,7 @@ def compute_returns(rewards, values, gamma=0.99):
         returns.insert(0, G)
     return torch.tensor(returns)
 
-def ppo_train(agent, env, epochs=100, rollout_len=256, clip=0.2, gamma=0.99, lr=2.5e-4):
+def ppo_train(agent, env, epochs=400, rollout_len=256, clip=0.2, gamma=0.97, lr=2e-4):
     optimizer = optim.Adam(agent.parameters(), lr=lr)
 
     for epoch in range(epochs):
@@ -50,23 +50,45 @@ def ppo_train(agent, env, epochs=100, rollout_len=256, clip=0.2, gamma=0.99, lr=
         actions = torch.stack(actions)
         log_probs_old = torch.stack(log_probs).detach()
         values = torch.stack(values)
-        advantages = returns - values.detach()
+        #advantages = returns - values.detach()
 
-        for _ in range(4):  # PPO mini-epochs
+        for _ in range(6):  # PPO mini-epochs
             # PPO uses multiple epochs of mini-batch updates for better learning
+            # common for PPO to collect a batch of transitions (rollout) and the use that batch to update the policy and value function
+            # typically between 3-10 epochs of mini-batch updates
             # Recomputes log prob of old actions under the new policy
             logits, new_values = agent(states)
             dist = torch.distributions.Categorical(logits=logits)
             new_log_probs = dist.log_prob(actions)
             entropy = dist.entropy().mean()
+
+            # Convert logits to probabilities for logging
+            probs = torch.softmax(logits, dim=-1)
+            avg_probs = probs.mean(dim=0)  # average over the batch for a clean wandb plot
+
+            # Log to wandb
+            wandb.log({
+                "avg_prob_class_0": avg_probs[0].item(),
+                "avg_prob_class_1": avg_probs[1].item(),
+                "logtis max": logits.max().item(),
+                "logits min": logits.min().item()
+            })
+            wandb.log({
+                "prob_dist": wandb.Histogram(probs.detach().cpu().numpy())
+            })
+
             # Calculates the ratio between new and old policy for policy change
             ratio = (new_log_probs - log_probs_old).exp()
             # Measures how much better or worse the action was than expected
+            # Returns: The cumulative rewards from the current state to the end of the episode
+            # values: The value estimates from the current state
             advantages = returns - new_values.squeeze()
 
             # PPO loss
             # PPO clipped objective function
             # Avoids making huge policy updates by clipping the ratio between new and old policy
+            # surrogate1 is the original objective function
+            # surrogate2 is the clipped objective function
             surrogate1 = ratio * advantages
             surrogate2 = torch.clamp(ratio, 1 - clip, 1 + clip) * advantages
             actor_loss = -torch.min(surrogate1, surrogate2).mean()
@@ -74,11 +96,18 @@ def ppo_train(agent, env, epochs=100, rollout_len=256, clip=0.2, gamma=0.99, lr=
             # Entropy loss encourages exploration
             # The total loss is a weighted combination of the actor loss, critic loss, and entropy loss
             critic_loss = nn.MSELoss()(new_values.squeeze(), returns)
-            loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
+            # Entropy encourages exploration by penalizing certainty in the policy
+            # The entropy term is multiplied by a weight that decays over time to reduce exploration as training progresses
+            #initial_entropy_weight = 0.001
+            #entropy_weight = initial_entropy_weight *(0.95 ** epoch)  # Decay entropy weight over time
+            loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
 
             # Standard PyTorch training step
             optimizer.zero_grad()
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=0.5)
+
             optimizer.step()
             
         # 🧠 Log CSP projections for visualization

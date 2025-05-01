@@ -16,6 +16,9 @@ class CSP:
 
         if n_classes != 2:
             raise ValueError('n_classes must be 2')
+        #print(f"x shape: {x.shape}")
+        #print(f"y shape: {y.shape}")
+        #print(f"Unique classes in y: {np.unique(y)}")
 
         covs = []
         for this_class in self.classes:

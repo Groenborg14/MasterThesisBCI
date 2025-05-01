@@ -10,11 +10,12 @@ class EEGenv(gym.Env):
         self.eeg_data = eeg_data  # shape: (N, channels, time)
         self.labels = labels
         self.current_step = 0
+        self.n_samples = eeg_data.shape[0]
+        self.n_features = eeg_data.shape[1]  # Number of features (CSP components)
 
-        n_channels, time_window = eeg_data.shape[1:]
         # Define the observation and action space. obersevation space = CSP EEG feature vector. Action space = 7 classes
-        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(n_channels, time_window))
-        self.action_space = gym.spaces.Discrete(7) # 7 actions for 7 classes
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.n_features,))
+        self.action_space = gym.spaces.Discrete(2) # 7 actions for 7 classes
 
     def reset(self):
         # this is called at the start of each episode to reset the environment to the first EEG sample
@@ -24,7 +25,9 @@ class EEGenv(gym.Env):
     def step(self, action):
         # this compares the agents action to the true label of the EEG sample and returns a reward of +1 if the action is correct and -1 if it is incorrect.
         true_label = self.labels[self.current_step]
-        reward = 1 if action == true_label else -1
+
+        reward = 1 if action == true_label else -1 # reward of +1 for correct action, -1 for incorrect action
+        
         # move to the next step
         self.current_step += 1
         # check if the episode is done

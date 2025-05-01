@@ -45,10 +45,10 @@ def create_epochs(raw, events, event_id, tmin, tmax):
     # The keys are the event names and the values are the corresponding event IDs
     event_dict = {
         "Elbow_flex"  :   1,
-        "Elbow extend":   2,
+        #"Elbow extend":   2,
         "Supination"  :   3,
-        "Pronatinon"  :   4,
-        "Hand close"  :   5,
+        #"Pronatinon"  :   4,
+        #"Hand close"  :   5,
         "Hand open"   :   6,
         "Rest"        :   7
     }
@@ -107,7 +107,16 @@ def get_data(subjects, run):
     # Extract data and labels from epochs
     X_alpha = epochs_alpha.get_data()  # shape: (n_trials, n_channels, n_times)
     X_beta = epochs_beta.get_data()  # shape: (n_trials, n_channels, n_times)
-    y = epochs_alpha.events[:, 2] - 1  # convert event_id 1-7 to labels 0-6
+    y = epochs_alpha.events[:, 2]  # convert event_id 1-7 to labels 0-6
+    #y = np.where(y == 1, 0, 1)
+    mask = np.isin(y, [1, 3, 6,7])  # Keep only events 1, 3, 6 and 7
+    X_alpha = X_alpha[mask]
+    X_beta = X_beta[mask]
+    y = y[mask]  # Convert to 0-3 labels
+    event_map = {1: 0, 3: 1, 6: 2, 7: 3}
+    y = np.vectorize(event_map.get)(y)  # Map events to new labels
+    
+    #print("y =", y," shape = ", y.shape)
 
     
     return X_alpha,X_beta, y
