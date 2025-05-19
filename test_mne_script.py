@@ -19,7 +19,7 @@ print(__doc__)
 # avoid classification of evoked responses by using epochs that start 1s after
 # cue onset.
 tmin, tmax = -1.0, 4.0
-subjects = 3
+subjects = 1
 runs = [6, 10, 14]  # motor imagery: hands vs feet
 
 raw_fnames = eegbci.load_data(subjects, runs)
@@ -47,9 +47,9 @@ epochs = Epochs(
     baseline=None,
     preload=True,
 )
-epochs_train = epochs.copy().crop(tmin=2.5, tmax=3.3)
+epochs_train = epochs.copy().crop(tmin=1, tmax=2)
 labels = epochs.events[:, -1] - 2
-
+print(np.bincount(labels))
 # Define a monte-carlo cross-validation generator (reduce variance):
 scores = []
 epochs_data = epochs.get_data(copy=False)

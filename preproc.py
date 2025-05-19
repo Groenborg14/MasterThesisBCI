@@ -46,20 +46,54 @@ def GetRawData(subjects, run):
 
     return raw
 
-subjects = [13]
+# --- LOAD RAW FILES ---
+def load_multi_run(subjects, runs):
+    raw_list = []
+    for subj in subjects:
+        subj_path = f"c:/Users/Christian/Desktop/Master Thesis/MI_data/motorimagination_subject{subj}"
+        for run in runs:
+            filepath = os.path.join(subj_path + f"_run{run}.gdf")
+            if os.path.exists(filepath):
+                raw = mne.io.read_raw_gdf(filepath, preload=True, verbose=False,include=(
+                "C5", "C3", "C1", "Cz", "C2", "C4", "C6",
+                "P3", "P1", "Pz", "P2", "P4", "F1", "Fz", "F2"
+            ))
+                raw.set_eeg_reference('average')
+                raw.apply_function(lambda x: x * 1e-6)  # Convert to uV
+                raw_list.append(raw)
+            else:
+                print(f"⚠️ Missing file: {filepath}")
+    
+    mne.channels.equalize_channels(raw_list)
+
+    # Concatenate without introducing BAD boundaries
+    raw_combined = mne.concatenate_raws(raw_list, on_mismatch='ignore')
+
+    # Remove 'BAD boundary' annotations (which may cause gaps or NaNs)
+    raw_combined.annotations.delete(
+        [i for i, desc in enumerate(raw_combined.annotations.description) if 'BAD' in desc]
+    )
+
+    return raw_combined
+
+subjects = [13,14]
 run = [1,2,3,4,5,6,7,8,9,10]
 
 # Aquiring the data
-raw = GetRawData(subjects,run)
+raw = load_multi_run(subjects,run)
+
+raw.info['bads'] = []
+
 
 # Correcting the data to uV and setting the reference to average 
 raw.apply_function(lambda x: x * 1e-6)
 raw.set_eeg_reference(ref_channels = 'average')
-
+raw.pick_types(eeg=True)
+raw.interpolate_bads()
 # Replace NaN or inf values in the raw data
 raw_data = raw._data  # Access the raw EEG data as a NumPy array
-raw_data[np.isnan(raw_data)] = 0  # Replace NaN values with 0
-raw_data[np.isinf(raw_data)] = 0  # Replace inf values with 0
+#raw_data[np.isnan(raw_data)] = 0  # Replace NaN values with 0
+#raw_data[np.isinf(raw_data)] = 0  # Replace inf values with 0
 
 # Getting the events from the annotations of the raw EEG data
 events,event_id = mne.events_from_annotations(raw)
@@ -122,6 +156,31 @@ epochs_beta = mne.Epochs(
     baseline=None,
     preload=True,
 )
+def print_nan_summary(name, data, labels):
+    n_total = data.shape[0]
+    has_nan = np.isnan(data).any(axis=(1, 2))
+    has_inf = np.isinf(data).any(axis=(1, 2))
+
+    for label in np.unique(labels):
+        class_mask = (labels == label)
+        total_class = class_mask.sum()
+        n_nan = has_nan[class_mask].sum()
+        n_inf = has_inf[class_mask].sum()
+        print(f"{name} - Class {label}: {total_class} trials | NaNs: {n_nan} | Infs: {n_inf}")
+
+print_nan_summary("Alpha", epochs_alpha.get_data(), epochs_alpha.events[:, 2])
+print_nan_summary("Beta", epochs_beta.get_data(), epochs_beta.events[:, 2])
+
+def drop_nan_epochs(epochs):
+    data = epochs.get_data()
+    mask = ~np.isnan(data).any(axis=(1, 2)) & ~np.isinf(data).any(axis=(1, 2))
+    return epochs[mask]
+
+#epochs_alpha = drop_nan_epochs(epochs_alpha)
+#epochs_beta = drop_nan_epochs(epochs_beta)
+
+print(epochs_alpha.get_data().shape)
+print(epochs_beta.get_data().shape)
 #epochs_beta["Elbow_flex"].plot(event_id=event_dict,events=events)
 
 #print(epochs_alpha.get_data().shape)
